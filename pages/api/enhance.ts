@@ -2,6 +2,8 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import formidable, { Fields, Files } from 'formidable';
 import { promisify } from 'util';
 import fs from 'fs';
+import os from 'os';
+import path from 'path';
 import { FormData, File } from 'formdata-node';
 import sharp from 'sharp';
 
@@ -11,9 +13,23 @@ export const config = {
   },
 };
 
+function getTempDir(): string {
+  // Use Vercel's /tmp in serverless, else OS temp dir
+  if (process.env.VERCEL) return '/tmp';
+  return os.tmpdir();
+}
+
+function ensureDir(dirPath: string) {
+  try {
+    fs.mkdirSync(dirPath, { recursive: true });
+  } catch {}
+}
+
 function parseForm(req: NextApiRequest): Promise<{ fields: Fields; files: Files }> {
-  // On serverless (Vercel), ensure temp files go to /tmp
-  const form = formidable({ multiples: false, uploadDir: '/tmp', keepExtensions: true });
+  const baseTmp = getTempDir();
+  const uploadDir = path.join(baseTmp, 'uploads');
+  ensureDir(uploadDir);
+  const form = formidable({ multiples: false, uploadDir, keepExtensions: true });
   return new Promise((resolve, reject) => {
     form.parse(req, (err: any, fields: Fields, files: Files) => {
       if (err) reject(err);
