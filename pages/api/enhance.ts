@@ -5,7 +5,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { FormData, File } from 'formdata-node';
-import sharp from 'sharp';
+import Jimp from 'jimp';
 
 export const config = {
   api: {
@@ -14,15 +14,12 @@ export const config = {
 };
 
 function getTempDir(): string {
-  // Use Vercel's /tmp in serverless, else OS temp dir
   if (process.env.VERCEL) return '/tmp';
   return os.tmpdir();
 }
 
 function ensureDir(dirPath: string) {
-  try {
-    fs.mkdirSync(dirPath, { recursive: true });
-  } catch {}
+  try { fs.mkdirSync(dirPath, { recursive: true }); } catch {}
 }
 
 function parseForm(req: NextApiRequest): Promise<{ fields: Fields; files: Files }> {
@@ -100,10 +97,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (shouldRemoveBg) {
         inputBuffer = await removeBackgroundWithRemoveBg(inputBuffer);
       }
-      const enhancedBuffer = await sharp(inputBuffer)
-        .modulate({ brightness: 1.1 })
-        .linear(1.1, 0)
-        .toBuffer();
+      // Read with Jimp
+      const src = await Jimp.read(inputBuffer);
+      // Composite on white background so transparent areas are white (not black)
+      const canvas = await new Jimp(src.bitmap.width, src.bitmap.height, 0xFFFFFFFF);
+      canvas.composite(src, 0, 0);
+      // Apply mild enhancements
+      canvas.brightness(0.1); // -1..+1
+      canvas.contrast(0.1);   // -1..+1
+      const enhancedBuffer = await canvas.quality(90).getBufferAsync(Jimp.MIME_JPEG);
+
       res.setHeader('Content-Type', 'image/jpeg');
       res.setHeader('Content-Disposition', 'inline; filename="enhanced.jpg"');
       res.status(200).send(enhancedBuffer);

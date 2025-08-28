@@ -56,6 +56,7 @@
     "formdata-node": "^6.0.3",
     "formidable": "^3.5.4",
     "input-otp": "^1.2.4",
+    "jimp": "^0.22.12",
     "lucide-react": "^0.446.0",
     "next": "13.5.1",
     "next-themes": "^0.3.0",
@@ -80,7 +81,7 @@
     "@types/formidable": "^3.4.5"
   },
   "optionalDependencies": {
-    "@img/sharp-linux-x64": "0.33.4",
-    "@img/sharp-libvips-linux-x64": "1.0.4"
+    "@img/sharp-libvips-linux-x64": "1.0.4",
+    "@img/sharp-linux-x64": "0.33.4"
   }
 }
