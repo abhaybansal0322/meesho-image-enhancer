@@ -3,10 +3,8 @@ import formidable, { Fields, Files } from 'formidable';
 import { promisify } from 'util';
 import fs from 'fs';
 import { FormData, File } from 'formdata-node';
-import fetch from 'node-fetch';
 import sharp from 'sharp';
 
-// Disable Next.js default body parsing for this API route
 export const config = {
   api: {
     bodyParser: false,
@@ -14,7 +12,8 @@ export const config = {
 };
 
 function parseForm(req: NextApiRequest): Promise<{ fields: Fields; files: Files }> {
-  const form = formidable({ multiples: false });
+  // On serverless (Vercel), ensure temp files go to /tmp
+  const form = formidable({ multiples: false, uploadDir: '/tmp', keepExtensions: true });
   return new Promise((resolve, reject) => {
     form.parse(req, (err: any, fields: Fields, files: Files) => {
       if (err) reject(err);
@@ -27,9 +26,7 @@ async function removeBackgroundWithRemoveBg(imageBuffer: Buffer): Promise<Buffer
   const apiKey = process.env.REMOVEBG_API_KEY;
   if (!apiKey) throw new Error('REMOVEBG_API_KEY not set in environment');
 
-  // Create a File from the buffer
   const file = new File([imageBuffer], 'image.jpg', { type: 'image/jpeg' });
-
   const formData = new FormData();
   formData.append('size', 'auto');
   formData.append('image_file', file);
@@ -49,51 +46,57 @@ async function removeBackgroundWithRemoveBg(imageBuffer: Buffer): Promise<Buffer
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  console.log('Enhance endpoint called');
-  if (req.method !== 'POST') {
-    res.status(405).json({ error: 'Method not allowed' });
-    return;
-  }
-
-  let fields, files;
   try {
-    ({ fields, files } = await parseForm(req));
-  } catch (err) {
-    console.error('Form parsing error:', err);
-    res.status(400).json({ error: 'Failed to parse form data.', details: String(err) });
-    return;
-  }
-
-  const file = files?.image;
-  if (!file) {
-    console.error('No image uploaded. files:', files);
-    res.status(400).json({ error: 'No image uploaded.' });
-    return;
-  }
-
-  const imgFile = Array.isArray(file) ? file[0] : file;
-  const imgPath = imgFile.filepath;
-  const removeBgValue = Array.isArray(fields?.removeBg) ? fields.removeBg[0] : fields?.removeBg;
-  const removeBg = removeBgValue === 'true';
-  console.log('removeBg field value:', fields?.removeBg);
-
-  try {
-    let inputBuffer = await promisify(fs.readFile)(imgPath);
-    if (removeBg) {
-      console.log('Calling remove.bg...');
-      inputBuffer = await removeBackgroundWithRemoveBg(inputBuffer);
-      console.log('remove.bg response length:', inputBuffer.length);
+    if (req.method !== 'POST') {
+      res.status(405).json({ error: 'Method not allowed' });
+      return;
     }
-    // Apply sharp enhancements
-    const enhancedBuffer = await sharp(inputBuffer)
-      .modulate({ brightness: 1.1 })
-      .linear(1.1, 0)
-      .toBuffer();
-    res.setHeader('Content-Type', 'image/jpeg');
-    res.setHeader('Content-Disposition', 'inline; filename="enhanced.jpg"');
-    res.status(200).send(enhancedBuffer);
+
+    let fields, files;
+    try {
+      ({ fields, files } = await parseForm(req));
+    } catch (err) {
+      console.error('Form parsing error:', err);
+      res.status(400).json({ error: 'Failed to parse form data.', details: String(err) });
+      return;
+    }
+
+    const file = files?.image;
+    if (!file) {
+      res.status(400).json({ error: 'No image uploaded.' });
+      return;
+    }
+
+    const imgFile = Array.isArray(file) ? file[0] : file;
+    const imgPath = (imgFile as any).filepath;
+    const removeBgValue = Array.isArray((fields as any)?.removeBg) ? (fields as any).removeBg[0] : (fields as any)?.removeBg;
+    const shouldRemoveBg = removeBgValue === 'true';
+
+    let inputBuffer: Buffer;
+    try {
+      inputBuffer = await promisify(fs.readFile)(imgPath);
+    } catch (err) {
+      res.status(400).json({ error: 'Failed to read uploaded file.', details: String(err) });
+      return;
+    }
+
+    try {
+      if (shouldRemoveBg) {
+        inputBuffer = await removeBackgroundWithRemoveBg(inputBuffer);
+      }
+      const enhancedBuffer = await sharp(inputBuffer)
+        .modulate({ brightness: 1.1 })
+        .linear(1.1, 0)
+        .toBuffer();
+      res.setHeader('Content-Type', 'image/jpeg');
+      res.setHeader('Content-Disposition', 'inline; filename="enhanced.jpg"');
+      res.status(200).send(enhancedBuffer);
+    } catch (err) {
+      console.error('Enhance pipeline error:', err);
+      res.status(500).json({ error: 'Image processing failed.', details: String(err) });
+    }
   } catch (err) {
-    console.error('Image processing error:', err);
-    res.status(500).json({ error: 'Image processing failed.', details: String(err) });
+    console.error('Unexpected error:', err);
+    res.status(500).json({ error: 'Unexpected server error.', details: String(err) });
   }
 } 
