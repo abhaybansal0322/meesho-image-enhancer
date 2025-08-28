@@ -9,7 +9,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "postinstall": "node -e \"try{require('sharp');console.log('sharp ok')}catch(e){console.log('rebuilding sharp');}\" || npm rebuild sharp --platform=linux --arch=x64"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",
@@ -77,5 +78,9 @@
   },
   "devDependencies": {
     "@types/formidable": "^3.4.5"
+  },
+  "optionalDependencies": {
+    "@img/sharp-linux-x64": "0.33.4",
+    "@img/sharp-libvips-linux-x64": "1.0.4"
   }
 }
